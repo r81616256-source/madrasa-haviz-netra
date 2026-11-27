@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Formulir Doa Malam Jumat — Pondok Hafidz Netra v7.1</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #0b192c;
+      color: #ffffff;
+      margin: 0;
+      padding: 18px;
+      line-height: 1.6;
+    }
+    main {
+      max-width: 720px;
+      margin: 0 auto;
+    }
+    .card {
+      background: #102542;
+      padding: 18px;
+      border-radius: 12px;
+      margin-bottom: 16px;
+    }
+    label {
+      display: block;
+      font-weight: bold;
+      margin-top: 10px;
+      margin-bottom: 4px;
+    }
+    input[type="text"] {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 12px;
+      font-size: 16px;
+      border-radius: 8px;
+      border: 2px solid #2a9d8f;
+      background: #0b192c;
+      color: #ffffff;
+    }
+    .btn-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    button {
+      min-height: 48px;
+      padding: 10px 16px;
+      font-size: 15px;
+      font-weight: bold;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      color: #ffffff;
+      background: #2a9d8f;
+    }
+    button.secondary { background: #1d3557; }
+    button.warning { background: #e76f51; }
+    button.danger { background: #c1121f; }
+    ul { list-style: none; padding: 0; margin: 12px 0 0 0; }
+    li {
+      background: #153243;
+      padding: 14px;
+      border-radius: 10px;
+      margin-bottom: 10px;
+    }
+    .meta {
+      font-size: 13px;
+      color: #cbe4f9;
+      margin-top: 2px;
+    }
+    #statusMsg {
+      padding: 12px;
+      border-radius: 8px;
+      background: #153243;
+      color: #cde7e0;
+      margin-top: 12px;
+      font-weight: 500;
+    }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <main>
+    <header class="card">
+      <h1>Formulir Doa Malam Jumat — Pondok Hafidz Netra</h1>
+      <p>Suara Media Teknologi (Ustadzah Nur &amp; Ustadz Yeni Setiawan). Seluruh nama di halaman ini sinkron langsung dengan Majelis Malam Jumat di Masjid Agung aplikasi Android.</p>
+    </header>
+
+    <section class="card" aria-labelledby="formHeading">
+      <h2 id="formHeading">Kirim Nama Almarhum / Almarhumah</h2>
+      <form id="arwahForm">
+        <input type="hidden" id="editKey" value="">
+
+        <label for="namaAlmarhum">Nama Almarhum / Almarhumah</label>
+        <input id="namaAlmarhum" type="text" required placeholder="Contoh: Alm. Bapak H. Ahmad" autocomplete="off">
+
+        <label for="namaPengirim">Nama Pengirim / Keluarga</label>
+        <input id="namaPengirim" type="text" required placeholder="Contoh: Keluarga Santri" autocomplete="off">
+
+        <div class="btn-row">
+          <button type="submit" id="btnSubmit">Kirim ke Daftar Majelis Malam Jumat</button>
+          <button type="button" id="btnCancelEdit" class="secondary hidden">Batal Edit</button>
+        </div>
+      </form>
+      <div id="statusMsg" role="status" aria-live="assertive">Siap menerima, mengubah, atau menghapus nama doa arwah.</div>
+    </section>
+
+    <section class="card" aria-labelledby="listHeading">
+      <h2 id="listHeading">Daftar Nama Arwah Aktif (<span id="countTotal">0</span> Nama)</h2>
+
+      <label for="searchInput">Cari Nama di Daftar (Opsional)</label>
+      <input id="searchInput" type="text" placeholder="Ketik sebagian nama untuk menyaring daftar..." autocomplete="off">
+
+      <div class="btn-row">
+        <button type="button" id="btnRefresh" class="secondary">Muat Ulang Daftar</button>
+      </div>
+
+      <ul id="arwahList" aria-live="polite">
+        <li>Memuat daftar nama arwah...</li>
+      </ul>
+    </section>
+  </main>
+
+  <script>
+    const BASE_URL = "https://gen-lang-client-0023395632-default-rtdb.asia-southeast1.firebasedatabase.app/madrasah_hafiz_netra/doa_malam_jumat";
+    const statusEl = document.getElementById("statusMsg");
+    const listEl = document.getElementById("arwahList");
+    const countEl = document.getElementById("countTotal");
+    const formEl = document.getElementById("arwahForm");
+    const formHeadingEl = document.getElementById("formHeading");
+    const editKeyEl = document.getElementById("editKey");
+    const namaEl = document.getElementById("namaAlmarhum");
+    const pengirimEl = document.getElementById("namaPengirim");
+    const btnSubmitEl = document.getElementById("btnSubmit");
+    const btnCancelEditEl = document.getElementById("btnCancelEdit");
+    const searchEl = document.getElementById("searchInput");
+
+    let cachedEntries = [];
+
+    function setStatus(msg) {
+      statusEl.textContent = msg;
+    }
+
+    function escapeHtml(str) {
+      return String(str).replace(/[&<>"']/g, s => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+      }[s]));
+    }
+
+    function resetFormMode() {
+      editKeyEl.value = "";
+      formEl.reset();
+      formHeadingEl.textContent = "Kirim Nama Almarhum / Almarhumah";
+      btnSubmitEl.textContent = "Kirim ke Daftar Majelis Malam Jumat";
+      btnCancelEditEl.classList.add("hidden");
+    }
+
+    function startInlineEdit(key, nama, pengirim) {
+      editKeyEl.value = key;
+      namaEl.value = nama;
+      pengirimEl.value = pengirim;
+      formHeadingEl.textContent = "Edit Nama Arwah: " + nama;
+      btnSubmitEl.textContent = "Simpan Perubahan Nama";
+      btnCancelEditEl.classList.remove("hidden");
+      setStatus("Mode Edit aktif untuk " + nama + ". Ubah tulisan lalu ketuk Simpan Perubahan Nama.");
+      namaEl.focus();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    async function deleteEntryNow(key, nama) {
+      setStatus("Menghapus " + nama + " dari daftar...");
+      try {
+        const res = await fetch(BASE_URL + "/" + encodeURIComponent(key) + ".json", {
+          method: "DELETE"
+        });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        if (editKeyEl.value === key) resetFormMode();
+        setStatus("Alhamdulillah, " + nama + " berhasil dihapus permanen dari daftar.");
+        await loadArwah();
+      } catch (e) {
+        setStatus("Gagal menghapus nama. Periksa koneksi internet lalu coba lagi.");
+      }
+    }
+
+    function renderList() {
+      const q = searchEl.value.trim().toLowerCase();
+      const filtered = cachedEntries.filter(item =>
+        !q || item.nama.toLowerCase().includes(q) || item.pengirim.toLowerCase().includes(q)
+      );
+
+      countEl.textContent = String(filtered.length);
+      listEl.innerHTML = "";
+
+      if (filtered.length === 0) {
+        listEl.innerHTML = "<li>Belum ada nama yang cocok di daftar.</li>";
+        return;
+      }
+
+      filtered.forEach(item => {
+        const li = document.createElement("li");
+
+        const info = document.createElement("div");
+        info.innerHTML = "<strong>" + escapeHtml(item.nama) + "</strong>"
+          + "<div class='meta'>Pengirim: " + escapeHtml(item.pengirim)
+          + (item.waktu ? " • " + escapeHtml(item.waktu) : "") + "</div>";
+        li.appendChild(info);
+
+        const actions = document.createElement("div");
+        actions.className = "btn-row";
+
+        const btnEdit = document.createElement("button");
+        btnEdit.type = "button";
+        btnEdit.className = "secondary";
+        btnEdit.textContent = "Edit";
+        btnEdit.setAttribute("aria-label", "Edit nama " + item.nama);
+        btnEdit.onclick = () => startInlineEdit(item.key, item.nama, item.pengirim);
+
+        const btnDel = document.createElement("button");
+        btnDel.type = "button";
+        btnDel.className = "danger";
+        btnDel.textContent = "Hapus";
+        btnDel.setAttribute("aria-label", "Hapus nama " + item.nama);
+
+        // Konfirmasi hapus inline (ramah Jieshuo & TalkBack, tanpa pop-up confirm)
+        const confirmBox = document.createElement("div");
+        confirmBox.className = "btn-row hidden";
+
+        const btnConfirmYes = document.createElement("button");
+        btnConfirmYes.type = "button";
+        btnConfirmYes.className = "danger";
+        btnConfirmYes.textContent = "Ya, Hapus Permanen";
+        btnConfirmYes.setAttribute("aria-label", "Konfirmasi hapus permanen " + item.nama);
+        btnConfirmYes.onclick = () => deleteEntryNow(item.key, item.nama);
+
+        const btnConfirmNo = document.createElement("button");
+        btnConfirmNo.type = "button";
+        btnConfirmNo.className = "secondary";
+        btnConfirmNo.textContent = "Batal";
+        btnConfirmNo.onclick = () => {
+          confirmBox.classList.add("hidden");
+          btnDel.focus();
+          setStatus("Penghapusan dibatalkan.");
+        };
+
+        confirmBox.appendChild(btnConfirmYes);
+        confirmBox.appendChild(btnConfirmNo);
+
+        btnDel.onclick = () => {
+          confirmBox.classList.remove("hidden");
+          setStatus("Konfirmasi hapus " + item.nama + ". Ketuk Ya Hapus Permanen atau Batal.");
+          btnConfirmYes.focus();
+        };
+
+        actions.appendChild(btnEdit);
+        actions.appendChild(btnDel);
+        li.appendChild(actions);
+        li.appendChild(confirmBox);
+        listEl.appendChild(li);
+      });
+    }
+
+    async function loadArwah() {
+      setStatus("Memuat daftar nama arwah dari Firebase...");
+      try {
+        const res = await fetch(BASE_URL + ".json");
+        const data = await res.json();
+        cachedEntries = [];
+        if (data && typeof data === "object") {
+          Object.entries(data).reverse().forEach(([key, val]) => {
+            if (val && typeof val === "object") {
+              const nama = String(val.nama || "").trim();
+              const pengirim = String(val.pengirim || "Keluarga").trim();
+              const waktu = String(val.waktu || "").trim();
+              if (nama) cachedEntries.push({ key, nama, pengirim, waktu });
+            } else if (typeof val === "string" && val.trim()) {
+              cachedEntries.push({ key, nama: val.trim(), pengirim: "Keluarga", waktu: "" });
+            }
+          });
+        }
+        renderList();
+        setStatus("Berhasil memuat " + cachedEntries.length + " nama arwah.");
+      } catch (e) {
+        setStatus("Gagal memuat data dari Firebase. Periksa koneksi internet.");
+      }
+    }
+
+    formEl.addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      const nama = namaEl.value.trim();
+      const pengirim = pengirimEl.value.trim();
+      if (!nama || !pengirim) return;
+
+      const editingKey = editKeyEl.value.trim();
+      const nowLabel = new Date().toLocaleString("id-ID");
+
+      try {
+        if (editingKey) {
+          setStatus("Menyimpan perubahan untuk " + nama + "...");
+          const res = await fetch(BASE_URL + "/" + encodeURIComponent(editingKey) + ".json", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ nama, pengirim })
+          });
+          if (!res.ok) throw new Error("HTTP " + res.status);
+          resetFormMode();
+          setStatus("Alhamdulillah, perubahan nama " + nama + " berhasil disimpan.");
+        } else {
+          setStatus("Mengirim nama " + nama + " ke Firebase...");
+          const res = await fetch(BASE_URL + ".json", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ nama, pengirim, waktu: nowLabel })
+          });
+          if (!res.ok) throw new Error("HTTP " + res.status);
+          resetFormMode();
+          setStatus("Alhamdulillah, " + nama + " berhasil ditambahkan ke Daftar Majelis Malam Jumat.");
+        }
+        await loadArwah();
+      } catch (e) {
+        setStatus("Gagal menyimpan ke Firebase. Periksa koneksi internet lalu coba lagi.");
+      }
+    });
+
+    btnCancelEditEl.addEventListener("click", () => {
+      resetFormMode();
+      setStatus("Mode edit dibatalkan.");
+    });
+
+    searchEl.addEventListener("input", renderList);
+    document.getElementById("btnRefresh").addEventListener("click", loadArwah);
+
+    loadArwah();
+  </script>
+</body>
+</html>
