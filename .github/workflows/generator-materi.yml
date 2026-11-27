@@ -1,0 +1,38 @@
+name: Generator Materi Suara Ustadz Ardi (v7.0)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "scripts/generate_materi.py"
+
+permissions:
+  contents: write
+
+jobs:
+  build-audio-materi:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install edge-tts
+        run: pip install --upgrade edge-tts
+
+      - name: Render Seluruh MP3 Ustadz Ardi (render_mp3)
+        run: python3 scripts/generate_materi.py
+
+      - name: Publikasikan ke GitHub Releases (materi-latest)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: materi-latest
+          name: Materi Audio Ustadz Ardi v7.0
+          body: Rilis otomatis 106 berkas MP3 suara Ustadz Ardi (id-ID-ArdiNeural) untuk Pondok Hafidz Netra v7.0.
+          files: audio_ustadz/*.mp3
